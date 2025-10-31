@@ -343,7 +343,8 @@ def add_no_trade_record(today_date: str, modelname: str):
     save_item["positions"] = current_position
     base_dir = Path(__file__).resolve().parents[1]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
-
+    # Ensure directory exists
+    position_file.parent.mkdir(parents=True, exist_ok=True)
     with position_file.open("a", encoding="utf-8") as f:
         f.write(json.dumps(save_item) + "\n")
     return 

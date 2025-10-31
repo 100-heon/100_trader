@@ -1,34 +1,42 @@
 #!/bin/bash
 
-# AI-Trader 主启动脚本
-# 用于启动完整的交易环境
+# AI-Trader Upbit launch script
+# Starts MCP services (Upbit toolchain) and runs the trading agent once.
 
-set -e  # 遇到错误时退出
+set -euo pipefail
 
-echo "🚀 Launching AI Trader Environment..."
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${ROOT_DIR}"
 
+# Load environment variables so subprocesses inherit credentials/config.
+if [ -f ".env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source ".env"
+    set +a
+fi
 
-echo "📊 Now getting and merging price data..."
-cd ./data
-python get_daily_price.py
-python merge_jsonl.py
-cd ../
+cleanup() {
+    if [ -n "${MCP_PID:-}" ] && kill -0 "${MCP_PID}" 2>/dev/null; then
+        echo "🛑 Stopping MCP services (pid ${MCP_PID})..."
+        kill "${MCP_PID}" || true
+        wait "${MCP_PID}" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
 
-echo "🔧 Now starting MCP services..."
-cd ./agent_tools
-python start_mcp_services.py
-cd ../
+LOG_DIR="${ROOT_DIR}/logs"
+mkdir -p "${LOG_DIR}"
 
-#waiting for MCP services to start
+echo "🔧 Starting MCP services (Upbit)..."
+python agent_tools/start_mcp_services_upbit.py > "${LOG_DIR}/mcp.log" 2>&1 &
+MCP_PID=$!
+
+# Give services a moment to become reachable.
 sleep 2
 
-echo "🤖 Now starting the main trading agent..."
-python main.py configs/default_config.json
+CONFIG_PATH="${1:-configs/default_config.json}"
+echo "🤖 Running AI-Trader with config: ${CONFIG_PATH}"
+python main.py "${CONFIG_PATH}"
 
-echo "✅ AI-Trader stopped"
-
-echo "🔄 Starting web server..."
-cd ./docs
-python3 -m http.server 8888
-
-echo "✅ Web server started"
+echo "✅ Trading run completed"

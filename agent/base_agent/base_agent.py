@@ -23,6 +23,10 @@ sys.path.insert(0, project_root)
 from tools.general_tools import extract_conversation, extract_tool_messages, get_config_value, write_config_value
 from tools.price_tools import add_no_trade_record
 from prompts.agent_prompt import get_agent_system_prompt, STOP_SIGNAL
+try:
+    from prompts.agent_prompt_upbit import get_agent_system_prompt_upbit
+except Exception:
+    get_agent_system_prompt_upbit = None
 
 # Load environment variables
 load_dotenv()
@@ -68,7 +72,8 @@ class BaseAgent:
         openai_base_url: Optional[str] = None,
         openai_api_key: Optional[str] = None,
         initial_cash: float = 10000.0,
-        init_date: str = "2025-10-13"
+        init_date: str = "2025-10-13",
+        prompt_mode: str = "stocks"
     ):
         """
         Initialize BaseAgent
@@ -95,6 +100,7 @@ class BaseAgent:
         self.base_delay = base_delay
         self.initial_cash = initial_cash
         self.init_date = init_date
+        self.prompt_mode = prompt_mode
         
         # Set MCP configuration
         self.mcp_config = mcp_config or self._get_default_mcp_config()
@@ -233,10 +239,16 @@ class BaseAgent:
         log_file = self._setup_logging(today_date)
         
         # Update system prompt
+        # Choose prompt based on mode
+        if self.prompt_mode == "upbit" and get_agent_system_prompt_upbit is not None:
+            sys_prompt = get_agent_system_prompt_upbit(today_date, self.signature)
+        else:
+            sys_prompt = get_agent_system_prompt(today_date, self.signature)
+
         self.agent = create_agent(
             self.model,
             tools=self.tools,
-            system_prompt=get_agent_system_prompt(today_date, self.signature),
+            system_prompt=sys_prompt,
         )
         
         # Initial user query
@@ -346,6 +358,11 @@ class BaseAgent:
         Returns:
             List of trading dates
         """
+        # Fast path: ONLY_TODAY override (ignore backlog)
+        only_today = os.getenv("ONLY_TODAY", "false").lower() in ("1", "true", "yes")
+        if only_today:
+            return [end_date]
+
         dates = []
         max_date = None
         
@@ -377,8 +394,13 @@ class BaseAgent:
         trading_dates = []
         current_date = max_date_obj + timedelta(days=1)
         
+        include_weekends = (
+            getattr(self, "prompt_mode", "stocks") == "upbit"
+            or os.getenv("INCLUDE_WEEKENDS", "false").lower() in ("1", "true", "yes")
+        )
+
         while current_date <= end_date_obj:
-            if current_date.weekday() < 5:  # Weekdays
+            if include_weekends or current_date.weekday() < 5:
                 trading_dates.append(current_date.strftime("%Y-%m-%d"))
             current_date += timedelta(days=1)
         

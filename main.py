@@ -4,11 +4,46 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+try:
+    # Ensure we load the .env next to this script regardless of CWD
+    load_dotenv(Path(__file__).parent / ".env")
+except Exception:
+    load_dotenv()
 
 # Import tools and prompts
 from tools.general_tools import get_config_value, write_config_value
 from prompts.agent_prompt import all_nasdaq_100_symbols
+try:
+    from prompts.crypto_symbols import all_upbit_krw_symbols
+except Exception:
+    all_upbit_krw_symbols = None
+try:
+    from tools.date_utils import latest_trading_date_kst, sleep_until_next_bar_kst
+except Exception:
+    latest_trading_date_kst = None
+    sleep_until_next_bar_kst = None
+
+
+def _resolve_bar_minutes_env(default: int = 60) -> int:
+    """Resolve bar size from env (UPBIT_BAR or UPBIT_BAR_MINUTES)."""
+    raw = os.getenv("UPBIT_BAR")
+    if raw:
+        v = raw.strip().lower()
+        if v.endswith("m") and v[:-1].isdigit():
+            return max(1, int(v[:-1]))
+        if v.endswith("h") and v[:-1].isdigit():
+            return max(1, int(v[:-1]) * 60)
+        if v.isdigit():
+            return max(1, int(v))
+    v2 = os.getenv("UPBIT_BAR_MINUTES")
+    if v2 and v2.isdigit():
+        return max(1, int(v2))
+    return default
+try:
+    from tools.upbit_universe import get_all_krw_symbols, get_top_krw_symbols_by_24h_value
+except Exception:
+    get_all_krw_symbols = None
+    get_top_krw_symbols_by_24h_value = None
 
 
 # Agent class mapping table - for dynamic import and instantiation
@@ -111,6 +146,14 @@ async def main(config_path=None):
     # Get date range from configuration file
     INIT_DATE = config["date_range"]["init_date"]
     END_DATE = config["date_range"]["end_date"]
+
+    # Optional: use today's date (KST) for live mode
+    use_today_flag = str(os.getenv("USE_TODAY", str(config.get("use_today", "false")))).lower() in ("1", "true", "yes")
+    if use_today_flag and latest_trading_date_kst is not None:
+        today_trading = latest_trading_date_kst(include_today=True)
+        INIT_DATE = today_trading
+        END_DATE = today_trading
+        print(f"📅 Using KST latest trading date: {today_trading}")
     
     # Environment variables can override dates in configuration file
     if os.getenv("INIT_DATE"):
@@ -150,6 +193,41 @@ async def main(config_path=None):
     print(f"🤖 Model list: {model_names}")
     print(f"⚙️  Agent config: max_steps={max_steps}, max_retries={max_retries}, base_delay={base_delay}, initial_cash={initial_cash}")
                     
+    # Choose symbol universe
+    symbols_override = config.get("symbols")
+    universe = os.getenv("UPBIT_UNIVERSE", config.get("universe", "nasdaq100"))
+    # Optional cap on number of symbols (env overrides config)
+    try:
+        max_symbols = int(os.getenv("MAX_SYMBOLS", str(config.get("max_symbols", 0)) or "0"))
+    except Exception:
+        max_symbols = 0
+    # Whether to rank by 24h traded value
+    top_by_24h_env = os.getenv("UPBIT_TOP_BY_24H", str(config.get("top_by_24h_value", "false")))
+    top_by_24h = str(top_by_24h_env).lower() in ("1", "true", "yes")
+
+    if symbols_override and isinstance(symbols_override, list) and len(symbols_override) > 0:
+        symbol_universe = symbols_override
+    else:
+        u = universe.lower()
+        if u in ("upbit_all_krw", "upbit_all"):
+            # Prefer top by 24h traded value when requested
+            if top_by_24h and get_top_krw_symbols_by_24h_value is not None:
+                fetched = get_top_krw_symbols_by_24h_value(max_symbols if max_symbols > 0 else 20)
+            elif get_all_krw_symbols is not None:
+                fetched = get_all_krw_symbols(max_symbols=max_symbols if max_symbols > 0 else None)
+            else:
+                fetched = []
+            if fetched:
+                symbol_universe = fetched
+            elif all_upbit_krw_symbols:
+                symbol_universe = all_upbit_krw_symbols
+            else:
+                symbol_universe = all_nasdaq_100_symbols
+        elif u == "upbit_krw" and all_upbit_krw_symbols:
+            symbol_universe = all_upbit_krw_symbols
+        else:
+            symbol_universe = all_nasdaq_100_symbols
+
     for model_config in enabled_models:
         # Read basemodel and signature directly from configuration file
         model_name = model_config.get("name", "unknown")
@@ -185,7 +263,7 @@ async def main(config_path=None):
             agent = AgentClass(
                 signature=signature,
                 basemodel=basemodel,
-                stock_symbols=all_nasdaq_100_symbols,
+                stock_symbols=symbol_universe,
                 log_path=log_path,
                 openai_base_url=openai_base_url,
                 openai_api_key=openai_api_key,
@@ -193,7 +271,8 @@ async def main(config_path=None):
                 max_retries=max_retries,
                 base_delay=base_delay,
                 initial_cash=initial_cash,
-                init_date=INIT_DATE
+                init_date=INIT_DATE,
+                prompt_mode=("upbit" if universe.lower() in ("upbit_krw", "upbit_all_krw", "upbit_all") else "stocks")
             )
             
             print(f"✅ {agent_type} instance created successfully: {agent}")
@@ -237,5 +316,41 @@ if __name__ == "__main__":
     else:
         print(f"📄 Using default configuration file: configs/default_config.json")
     
-    asyncio.run(main(config_path))
+    # Optional internal scheduler: ENABLE_SCHEDULER=true to loop and align to bar size
+    enable_scheduler = str(os.getenv("ENABLE_SCHEDULER", "false")).lower() in ("1", "true", "yes")
+    if enable_scheduler and sleep_until_next_bar_kst is not None:
+        # Force today-only safe execution in loop unless explicitly overridden
+        os.environ.setdefault("USE_TODAY", "true")
+        os.environ.setdefault("ONLY_TODAY", "true")
+        os.environ.setdefault("INCLUDE_WEEKENDS", "true")
+
+        # Derive interval from bar minutes unless SCHEDULE_INTERVAL_MINUTES is provided
+        try:
+            interval_min = int(os.getenv("SCHEDULE_INTERVAL_MINUTES", "0"))
+        except Exception:
+            interval_min = 0
+        if interval_min <= 0:
+            interval_min = _resolve_bar_minutes_env(60)
+
+        immediate = str(os.getenv("SCHEDULE_IMMEDIATE_RUN", "true")).lower() in ("1", "true", "yes")
+        align = str(os.getenv("SCHEDULE_ALIGN_TO_BAR", "true")).lower() in ("1", "true", "yes")
+
+        try:
+            first = True
+            while True:
+                if not immediate and first and align:
+                    # Wait until next bar boundary before first run
+                    sleep_until_next_bar_kst(interval_min)
+                asyncio.run(main(config_path))
+                first = False
+                if align:
+                    sleep_until_next_bar_kst(interval_min)
+                else:
+                    # Simple fixed sleep (in seconds)
+                    import time
+                    time.sleep(max(60, interval_min * 60))
+        except KeyboardInterrupt:
+            pass
+    else:
+        asyncio.run(main(config_path))
 

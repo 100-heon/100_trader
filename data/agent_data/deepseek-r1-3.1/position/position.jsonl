@@ -1,0 +1,15 @@
+{"date": "2025-10-30", "id": 0, "this_action": {"action": "snapshot", "symbol": "", "amount": 0}, "positions": {"CASH": 89882.9701156, "SOL": 0.03543586}}
+{"date": "2025-10-30", "id": 1, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 89882.9701156, "SOL": 0.03543586}}
+{"date": "2025-10-31", "id": 0, "this_action": {"action": "snapshot", "symbol": "", "amount": 0}, "positions": {"CASH": 79877.97042375, "SOL": 0.03543586}}
+{"date": "2025-10-31", "id": 1, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 79877.97042375, "SOL": 0.03543586}}
+{"date": "2025-10-31", "id": 2, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 79877.97042375, "SOL": 0.03543586}}
+{"date": "2025-10-31", "id": 3, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 79877.97042375, "SOL": 0.03543586}}
+{"date": "2025-10-31", "id": 4, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 79877.97042375, "SOL": 0.03543586}}
+{"date": "2025-10-31", "id": 5, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 79877.97042375, "SOL": 0.03543586}}
+{"date": "2025-10-31", "id": 6, "this_action": {"action": "snapshot", "symbol": "", "amount": 0}, "positions": {"CASH": 69872.97180044, "SOL": 0.10697378}}
+{"date": "2025-10-31", "id": 7, "this_action": {"action": "snapshot", "symbol": "", "amount": 0}, "positions": {"CASH": 99479.20307566}}
+{"date": "2025-10-31", "id": 8, "this_action": {"action": "snapshot", "symbol": "", "amount": 0}, "positions": {"CASH": 89474.221765, "ETH": 0.00174398}}
+{"date": "2025-10-31", "id": 9, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 89474.221765, "ETH": 0.00174398}}
+{"date": "2025-10-31", "id": 10, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 89474.221765, "ETH": 0.00174398}}
+{"date": "2025-10-31", "id": 11, "this_action": {"action": "snapshot", "symbol": "", "amount": 0}, "positions": {"CASH": 69464.221765, "ETH": 0.00174398}}
+{"date": "2025-10-31", "id": 12, "this_action": {"action": "no_trade", "symbol": "", "amount": 0}, "positions": {"CASH": 69464.221765, "ETH": 0.00174398}}
